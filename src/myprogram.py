@@ -39,10 +39,18 @@ class MyModel:
     def run_pred(self, data):
         # your code here
         preds = []
-        all_chars = string.ascii_letters
+        #morse = "._ " # -- Something we considered
+        #all_chars = string.ascii_letters
+
+        # Repeated for higher chance of selection.
+        vowels = "aaaaaeeeeeeeeiiiioooooooouuuy"
+        consonants = "bcccdddfghhhhhhjklllmnnnnnnnpqrrrrrssssssttttttvwxz"
+        extra = ".?!1234567890..."
         for inp in data:
             # this model just predicts a random character each time
-            top_guesses = [random.choice(all_chars) for _ in range(3)]
+            top_guesses = [random.choice(vowels)]
+            top_guesses += random.choice(consonants)
+            top_guesses += random.choice(extra)
             preds.append(''.join(top_guesses))
         return preds
 
