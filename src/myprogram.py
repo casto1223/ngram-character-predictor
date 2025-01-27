@@ -45,12 +45,16 @@ class MyModel:
         # Repeated for higher chance of selection.
         vowels = "aaaaaeeeeeeeeiiiioooooooouuuy"
         consonants = "bcccdddfghhhhhhjklllmnnnnnnnpqrrrrrssssssttttttvwxz"
-        extra = ".?!1234567890..."
+        #extra = ".?!1234567890..."
         for inp in data:
             # this model just predicts a random character each time
             top_guesses = [random.choice(vowels)]
             top_guesses += random.choice(consonants)
-            top_guesses += random.choice(extra)
+            last_choice = random.choice(vowels + consonants)
+            # Make sure there is no duplicate characters
+            while (last_choice in top_guesses):
+                last_choice = random.choice(vowels + consonants)
+            top_guesses += last_choice
             preds.append(''.join(top_guesses))
         return preds
 
