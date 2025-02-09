@@ -15,7 +15,7 @@ class MyModel:
 
     def __init__(self):
         self.char_freq = defaultdict(lambda: defaultdict(int))
-        self.context_length = 5  # Use 5 previous chars for context
+        self.context_length = 6  # Use 6 previous chars for context
 
     @classmethod
     def load_training_data(cls):
@@ -70,14 +70,33 @@ class MyModel:
         if not freq_dict:
             return 'eai'
         
-        # Sort by frequency and return top n characters
+        # Sort by frequency and return top n unique characters
         sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
-        return ''.join(char for char, _ in sorted_chars[:n])
+        result = ''
+        seen = set()
+        for char, _ in sorted_chars:
+            if char not in seen:
+                result += char
+                seen.add(char)
+                if len(result) == n:
+                    break
+        
+        # If we don't have enough unique characters, pad with defaults
+        defaults = 'eai'
+        i = 0
+        while len(result) < n:
+            if defaults[i] not in seen:
+                result += defaults[i]
+                seen.add(defaults[i])
+            i = (i + 1) % len(defaults)
+        
+        return result
 
     def run_pred(self, data):
         preds = []
         for inp in data:
             # Get last n characters as context
+            inp = inp.lower()
             context = inp[-self.context_length:] if len(inp) >= self.context_length else inp
             top_3 = self.get_top_chars(context)
             preds.append(top_3)
@@ -85,15 +104,24 @@ class MyModel:
 
     def save(self, work_dir):
         checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
+        # Convert defaultdict to regular dict for serialization
+        char_freq_dict = dict(self.char_freq)
+        for context in char_freq_dict:
+            char_freq_dict[context] = dict(char_freq_dict[context])
+        
         with open(checkpoint_path, 'wb') as f:
-            pickle.dump(self.char_freq, f)
+            pickle.dump(char_freq_dict, f)
 
     @classmethod
     def load(cls, work_dir):
         model = cls()
         checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
         with open(checkpoint_path, 'rb') as f:
-            model.char_freq = pickle.load(f)
+            char_freq_dict = pickle.load(f)
+            # Convert back to defaultdict
+            model.char_freq = defaultdict(lambda: defaultdict(int))
+            for context, freq in char_freq_dict.items():
+                model.char_freq[context].update(freq)
         return model
 
 
