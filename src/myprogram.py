@@ -22,7 +22,7 @@ class MyModel:
         # your code here
         # this particular model doesn't train
         data = []
-        with open('data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
+        with open('src/data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
             csv_reader = csv.reader(f)
             next(csv_reader)  # Skip header
             for row in csv_reader:
