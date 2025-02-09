@@ -2,6 +2,9 @@
 import os
 import string
 import random
+import csv
+from collections import defaultdict
+import pickle
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 
@@ -10,11 +13,25 @@ class MyModel:
     This is a starter model to get you started. Feel free to modify this file.
     """
 
+    def __init__(self):
+        self.char_freq = defaultdict(lambda: defaultdict(int))
+        self.context_length = 5  # Use 5 previous chars for context
+
     @classmethod
     def load_training_data(cls):
         # your code here
         # this particular model doesn't train
-        return []
+        data = []
+        with open('data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
+            csv_reader = csv.reader(f)
+            next(csv_reader)  # Skip header
+            for row in csv_reader:
+                if row:  # Make sure row isn't empty
+                    text = row[0]  # Assuming transcript is first column
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in text if c.isalpha() or c in ' .,!?')
+                    data.append(cleaned)
+        return data
 
     @classmethod
     def load_test_data(cls, fname):
@@ -34,43 +51,50 @@ class MyModel:
 
     def run_train(self, data, work_dir):
         # your code here
-        pass
+        for text in data:
+            for i in range(len(text)-1):
+                context = text[max(0, i-self.context_length):i]
+                next_char = text[i]
+                self.char_freq[context][next_char] += 1
+
+    def get_top_chars(self, context, n=3):
+        # Get frequency dict for this context
+        freq_dict = self.char_freq[context[-self.context_length:]]
+        
+        # If no data for this context, back off to shorter context
+        while not freq_dict and len(context) > 0:
+            context = context[1:]
+            freq_dict = self.char_freq[context]
+        
+        # If still no data, use default letters
+        if not freq_dict:
+            return 'eai'
+        
+        # Sort by frequency and return top n characters
+        sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+        return ''.join(char for char, _ in sorted_chars[:n])
 
     def run_pred(self, data):
-        # your code here
         preds = []
-        #morse = "._ " # -- Something we considered
-        #all_chars = string.ascii_letters
-
-        # Repeated for higher chance of selection.
-        vowels = "aaaaaeeeeeeeeiiiioooooooouuuy"
-        consonants = "bcccdddfghhhhhhjklllmnnnnnnnpqrrrrrssssssttttttvwxz"
-        #extra = ".?!1234567890..."
         for inp in data:
-            # this model just predicts a random character each time
-            top_guesses = [random.choice(vowels)]
-            top_guesses += random.choice(consonants)
-            last_choice = random.choice(vowels + consonants)
-            # Make sure there is no duplicate characters
-            while (last_choice in top_guesses):
-                last_choice = random.choice(vowels + consonants)
-            top_guesses += last_choice
-            preds.append(''.join(top_guesses))
+            # Get last n characters as context
+            context = inp[-self.context_length:] if len(inp) >= self.context_length else inp
+            top_3 = self.get_top_chars(context)
+            preds.append(top_3)
         return preds
 
     def save(self, work_dir):
-        # your code here
-        # this particular model has nothing to save, but for demonstration purposes we will save a blank file
-        with open(os.path.join(work_dir, 'model.checkpoint'), 'wt') as f:
-            f.write('dummy save')
+        checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
+        with open(checkpoint_path, 'wb') as f:
+            pickle.dump(self.char_freq, f)
 
     @classmethod
     def load(cls, work_dir):
-        # your code here
-        # this particular model has nothing to load, but for demonstration purposes we will load a blank file
-        with open(os.path.join(work_dir, 'model.checkpoint')) as f:
-            dummy_save = f.read()
-        return MyModel()
+        model = cls()
+        checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
+        with open(checkpoint_path, 'rb') as f:
+            model.char_freq = pickle.load(f)
+        return model
 
 
 if __name__ == '__main__':
