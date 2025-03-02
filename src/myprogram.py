@@ -16,65 +16,140 @@ class MyModel:
     def __init__(self):
         self.char_freq = defaultdict(lambda: defaultdict(int))
         self.context_length = 6  # Use 6 previous chars for context
+        # self.print_chars_repeatedly("")
+        # self.clean_text('src/data/hin_news_2022_10K-sentences.txt', 'src/data/hindi_text.txt')
 
     @classmethod
     def load_training_data(cls):
-        # your code here
-        # this particular model doesn't train
         data = []
-        with open('src/data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
-            csv_reader = csv.reader(f)
-            next(csv_reader)  # Skip header
-            for row in csv_reader:
-                if row:  # Make sure row isn't empty
-                    text = row[0]  # Assuming transcript is first column
+        # Load English TED talks data
+        try:
+            with open('src/data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
+                csv_reader = csv.reader(f)
+                next(csv_reader)  # Skip header
+                for row in csv_reader:
+                    if row:  # Make sure row isn't empty
+                        text = row[0]  # Assuming transcript is first column
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in text if c.isalpha() or c in ' .,!?')
+                        data.append(cleaned)
+        except FileNotFoundError:
+            print("English TED talks file not found. Continuing with Chinese data only.")
+
+        # Load German data
+        try:
+            with open('src/data/german_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
                     # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in text if c.isalpha() or c in ' .,!?')
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?')
                     data.append(cleaned)
+        except FileNotFoundError:
+            print("German text file not found. Continuing with English data only.")
+
+        # Load German data
+        try:
+            with open('src/data/russian_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF'))
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Russian text file not found. Continuing with English data only.")
+        
+        # Load Chinese data
+        try:
+            with open('src/data/chinese_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    cleaned_line = line.strip()
+                    if cleaned_line:  # Skip empty lines
+                        data.append(cleaned_line)
+        except FileNotFoundError:
+            print("Chinese text file not found. Continuing with English data only.")
+
+        # Load German data
+        try:
+            with open('src/data/hindi_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF') or ('\u0900' <= c <= '\u097F'))
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Hindi text file not found. Continuing with English data only.")
+        
         return data
 
     @classmethod
     def load_test_data(cls, fname):
-        # your code here
         data = []
-        with open(fname) as f:
-            for line in f:
-                inp = line[:-1]  # the last character is a newline
-                data.append(inp)
+        try:
+            with open(fname, 'r', encoding='utf-8') as f:
+                for line in f:
+                    inp = line.strip()
+                    if inp:  # Skip empty lines
+                        data.append(inp)
+        except Exception as e:
+            print(f"Error loading test data: {e}")
+            raise
         return data
 
     @classmethod
     def write_pred(cls, preds, fname):
-        with open(fname, 'wt') as f:
-            for p in preds:
-                f.write('{}\n'.format(p))
+        try:
+            with open(fname, 'w', encoding='utf-8') as f:
+                for p in preds:
+                    f.write(f"{p}\n")
+        except Exception as e:
+            print(f"Error writing predictions: {e}")
+            raise
 
     def run_train(self, data, work_dir):
-        # your code here
+        print("Training on data...")
         for text in data:
-            for i in range(len(text)-1):
+            # Process text in appropriate chunks
+            for i in range(1, len(text)):  # Start at 1 since we're predicting the next character
+                # Get context (previous characters)
                 context = text[max(0, i-self.context_length):i]
+                # Character to predict
                 next_char = text[i]
+                # Update frequency dictionary
                 self.char_freq[context][next_char] += 1
+            
 
     def get_top_chars(self, context, n=3):
         # Get frequency dict for this context
         freq_dict = self.char_freq[context[-self.context_length:]]
         
-        # If no data for this context, back off to shorter context
-        while not freq_dict and len(context) > 0:
-            context = context[1:]
-            freq_dict = self.char_freq[context]
+        # Debug context analysis
+        has_chinese = any('\u4e00' <= char <= '\u9fff' for char in context)
+        has_hindi = any('\u0900' <= char <= '\u097F' for char in context)
+        has_russian = any('\u0400' <= char <= '\u04FF' for char in context)
+        context_type = "Chinese" if has_chinese else "Hindi" if has_hindi else "Russian" if has_russian else "English"
         
-        # If still no data, use default letters
+        # If no data for this context, back off to shorter context
+        original_context = context
+        backup_length = len(context)
+        while not freq_dict and backup_length > 0:
+            backup_length -= 1
+            shorter_context = context[-backup_length:] if backup_length > 0 else ""
+            freq_dict = self.char_freq[shorter_context]
+        
+        # If still no data, use appropriate defaults based on input language
         if not freq_dict:
-            return 'eai'
+            if has_chinese:
+                return '的一是'  # Common Chinese characters
+            elif has_hindi:
+                return 'कीहम'  # Common Hindi characters
+            elif has_russian:
+                return 'вон'  # Common Russian characters
+            else:
+                return 'eai'  # Default for English
         
         # Sort by frequency and return top n unique characters
         sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
         result = ''
         seen = set()
-        for char, _ in sorted_chars:
+        
+        for char, freq in sorted_chars:
             if char not in seen:
                 result += char
                 seen.add(char)
@@ -82,7 +157,7 @@ class MyModel:
                     break
         
         # If we don't have enough unique characters, pad with defaults
-        defaults = 'eai'
+        defaults = '的一是' if has_chinese else 'कीहम' if has_hindi else 'вон' if has_russian else 'eai'
         i = 0
         while len(result) < n:
             if defaults[i] not in seen:
@@ -123,6 +198,46 @@ class MyModel:
             for context, freq in char_freq_dict.items():
                 model.char_freq[context].update(freq)
         return model
+
+    @classmethod
+    def print_chars_repeatedly(self, s):
+        # Print progressive expansion of the string
+        for j in range(1, len(s) + 1):
+            print(s[:j])
+        
+        # Print each character on a new line
+        for char in s:
+            print(char)
+
+    @classmethod
+    def clean_text(cls, input_file, output_file):
+        """
+        Clean German text data by removing numbers and leading spaces at the start of each line
+        
+        Args:
+            input_file (str): Path to the input file
+            output_file (str): Path to the output file where cleaned text will be saved
+        """
+        try:
+            with open(input_file, 'r', encoding='utf-8') as f_in, open(output_file, 'w', encoding='utf-8') as f_out:
+                for line in f_in:
+                    # Use regex-like approach to remove number prefix and spaces
+                    cleaned_line = line.strip()
+                    # Find position after the initial number and spaces
+                    pos = 0
+                    # Skip initial numbers
+                    while pos < len(cleaned_line) and cleaned_line[pos].isdigit():
+                        pos += 1
+                    # Skip spaces after numbers
+                    while pos < len(cleaned_line) and cleaned_line[pos].isspace():
+                        pos += 1
+                    # Write the cleaned text
+                    if pos < len(cleaned_line):
+                        f_out.write(cleaned_line[pos:] + '\n')
+            
+            print(f"Cleaned text saved to {output_file}")
+        except Exception as e:
+            print(f"Error cleaning text: {e}")
 
 
 if __name__ == '__main__':
