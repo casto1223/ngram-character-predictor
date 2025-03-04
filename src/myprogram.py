@@ -22,49 +22,59 @@ class MyModel:
     @classmethod
     def load_training_data(cls):
         data = []
-        file_paths = [
-            ('src/data/english_ted_talks.csv', 'English TED talks', True),
-            ('src/data/german_text.txt', 'German text', False),
-            ('src/data/russian_text.txt', 'Russian text', False),
-            ('src/data/chinese_text.txt', 'Chinese text', False),
-            ('src/data/hindi_text.txt', 'Hindi text', False)
-        ]
+        # Load English TED talks data
+        try:
+            with open('src/data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
+                csv_reader = csv.reader(f)
+                next(csv_reader)  # Skip header
+                for row in csv_reader:
+                    if row:  # Make sure row isn't empty
+                        text = row[0]  # Assuming transcript is first column
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in text if c.isalpha() or c in ' .,!?')
+                        data.append(cleaned)
+        except FileNotFoundError:
+            print("English TED talks file not found. Continuing with Chinese data only.")
 
-        # Define character validation functions outside the loops
-        def is_valid_char(c, file_type):
-            if c.isalpha() or c in ' .,!?':
-                return True
-            if file_type in ['Russian text', 'Hindi text'] and '\u0400' <= c <= '\u04FF':
-                return True
-            if file_type == 'Hindi text' and '\u0900' <= c <= '\u097F':
-                return True
-            return False
+        # Load German data
+        try:
+            with open('src/data/german_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?')
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("German text file not found. Continuing with English data only.")
 
-        for file_path, file_type, is_csv in file_paths:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    if is_csv:
-                    # Process CSV file (English TED talks)
-                        csv_reader = csv.reader(f)
-                        next(csv_reader)  # Skip header
-                        for row in csv_reader:
-                            if row:
-                                text = row[0]
-                                cleaned = ''.join(c.lower() for c in text if is_valid_char(c, file_type))
-                                data.append(cleaned)
-                    elif file_type == 'Chinese text':
-                    # Process Chinese text with minimal cleaning
-                        for line in f:
-                            cleaned_line = line.strip()
-                            if cleaned_line:
-                                data.append(cleaned_line)
-                    else:
-                    # Process other text files
-                        for line in f:
-                            cleaned = ''.join(c.lower() for c in line if is_valid_char(c, file_type))
-                            data.append(cleaned)
-            except FileNotFoundError:
-                print(f"{file_type} file not found. Continuing with other data sources.")
+        # Load German data
+        try:
+            with open('src/data/russian_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF'))
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Russian text file not found. Continuing with English data only.")
+        
+        # Load Chinese data
+        try:
+            with open('src/data/chinese_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    cleaned_line = line.strip()
+                    if cleaned_line:  # Skip empty lines
+                        data.append(cleaned_line)
+        except FileNotFoundError:
+            print("Chinese text file not found. Continuing with English data only.")
+
+        # Load German data
+        try:
+            with open('src/data/hindi_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF') or ('\u0900' <= c <= '\u097F'))
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Hindi text file not found. Continuing with English data only.")
         
         return data
 
