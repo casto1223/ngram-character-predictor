@@ -50,7 +50,7 @@ if [ -z "$1" ] || [ "$1" = "all" ]; then
     echo "===== SUMMARY OF RESULTS ====="
     for i in "${!languages[@]}"; do
         lang_name="${language_names[$i]}"
-        echo "${lang_name}: Success rate: ${results[$i]}%, Duration: ${durations[$i]} seconds"
+        echo "${lang_name}: Success rate: ${results[$i]}, Duration: ${durations[$i]} seconds"
     done
     
     # Calculate and print average - avoid using bc
@@ -69,7 +69,7 @@ if [ -z "$1" ] || [ "$1" = "all" ]; then
     avg_duration=$(awk "BEGIN {printf \"%.2f\", $total_duration / $count}")
     
     echo ""
-    echo "AVERAGE: Success rate: ${avg_success}%, Duration: ${avg_duration} seconds"
+    echo "AVERAGE: Success rate: ${avg_success}, Duration: ${avg_duration} seconds"
     
 else
     # Run a single language
