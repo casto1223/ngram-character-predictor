@@ -29,11 +29,11 @@ if [ -z "$1" ] || [ "$1" = "all" ]; then
         echo "=== Testing ${lang_name} ==="
         
         start=$SECONDS
-        python src/myprogram.py test --test_data test_data/input/input$data.txt --test_output pred$data.txt
+        python3 src/myprogram.py test --test_data test_data/input/input$data.txt --test_output pred$data.txt
         duration=$(( SECONDS - start ))
         
         # Capture the output of grade.py
-        output=$(python grader/grade.py pred$data.txt test_data/answer/answer$data.txt)
+        output=$(python3 grader/grade.py pred$data.txt test_data/answer/answer$data.txt)
         
         # Extract success rate
         success_rate=$(extract_success_rate "$output")
@@ -106,8 +106,8 @@ else
     esac
     
     start=$SECONDS
-    python src/myprogram.py test --test_data test_data/input/input$data.txt --test_output pred$data.txt
+    python3 src/myprogram.py test --test_data test_data/input/input$data.txt --test_output pred$data.txt
     duration=$(( SECONDS - start ))
-    python grader/grade.py pred$data.txt test_data/answer/answer$data.txt --verbose
+    python3 grader/grade.py pred$data.txt test_data/answer/answer$data.txt --verbose
     echo "Model took $duration seconds to run"
 fi
