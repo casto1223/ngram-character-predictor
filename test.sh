@@ -19,6 +19,12 @@ case $1 in
     "eng")
     data="_english"
     ;;
+    "fre")
+    data="_french"
+    ;;
+    "ita")
+    data="_italian"
+    ;;
     esac
     
 python3 src/myprogram.py test --test_data test_data/input/input$data.txt --test_output pred$data.txt
