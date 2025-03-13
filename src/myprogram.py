@@ -16,8 +16,10 @@ class MyModel:
     def __init__(self):
         self.char_freq = defaultdict(lambda: defaultdict(int))
         self.context_length = 6  # Use 6 previous chars for context
-        self.print_chars_repeatedly("La capital de España es Madrid.")
-        # self.clean_text('src/data/fra_news_2024_10K-sentences.txt', 'src/data/french_text.txt')
+        self.hebrew_range = (0x0590, 0x05FF)
+        self.arabic_range = (0x0600, 0x06FF)
+        # self.print_chars_repeatedly("ישראל, רשמית מדינת ישראל, היא מדינה במערב אסיה.")
+        # self.clean_text('src/data/ara_news_2022_10K-sentences.txt', 'src/data/arabic_text.txt')
 
     @classmethod
     def load_training_data(cls):
@@ -106,6 +108,26 @@ class MyModel:
         except FileNotFoundError:
             print("Spanish text file not found. Continuing without Spanish data.")
 
+        # Load Hebrew data
+        try:
+            with open('src/data/hebrew_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or (0x0590 <= ord(c) <= 0x05FF))
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Hebrew text file not found. Continuing without Hebrew data.")
+
+        # Load Arabic data
+        try:
+            with open('src/data/arabic_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or (0x0600 <= ord(c) <= 0x06FF))
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Arabic text file not found. Continuing without Arabic data.")
+
 
         return data
 
@@ -154,8 +176,10 @@ class MyModel:
         has_chinese = any('\u4e00' <= char <= '\u9fff' for char in context)
         has_hindi = any('\u0900' <= char <= '\u097F' for char in context)
         has_russian = any('\u0400' <= char <= '\u04FF' for char in context)
-        context_type = "Chinese" if has_chinese else "Hindi" if has_hindi else "Russian" if has_russian else "English"
-        
+        has_hebrew = any(0x0590 <= ord(char) <= 0x05FF for char in context)
+        has_arabic = any(0x0600 <= ord(char) <= 0x06FF for char in context)
+        context_type = "Chinese" if has_chinese else "Hindi" if has_hindi else "Russian" if has_russian else "Hebrew" if has_hebrew else "Arabic" if has_arabic else "English"
+
         # If no data for this context, back off to shorter context
         original_context = context
         backup_length = len(context)
@@ -172,6 +196,10 @@ class MyModel:
                 return 'कीहम'  # Common Hindi characters
             elif has_russian:
                 return 'вон'  # Common Russian characters
+            elif has_hebrew:
+                return 'אבג'
+            elif has_arabic:
+                return 'بتث'
             else:
                 return 'eai'  # Default for English
         
@@ -188,7 +216,7 @@ class MyModel:
                     break
         
         # If we don't have enough unique characters, pad with defaults
-        defaults = '的一是' if has_chinese else 'कीहम' if has_hindi else 'вон' if has_russian else 'eai'
+        defaults = '的一是' if has_chinese else 'कीहम' if has_hindi else 'вон' if has_russian else 'אבג' if has_hebrew else 'بتث' if has_arabic else 'eai'
         i = 0
         while len(result) < n:
             if defaults[i] not in seen:
@@ -235,6 +263,16 @@ class MyModel:
         # Print progressive expansion of the string
         for j in range(1, len(s) + 1):
             print(s[:j])
+        
+        # Print each character on a new line
+        for char in s:
+            print(char)
+
+    @classmethod
+    def print_chars_repeatedly_rtol(self, s):
+        # Print progressive expansion of the string
+        for j in range(1, len(s) + 1):
+            print(s[j-1::-1])
         
         # Print each character on a new line
         for char in s:
