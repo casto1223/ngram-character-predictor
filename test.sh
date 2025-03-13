@@ -70,6 +70,7 @@ if [ -z "$1" ] || [ "$1" = "all" ]; then
     
     echo ""
     echo "AVERAGE: Success rate: ${avg_success}, Duration: ${avg_duration} seconds"
+    echo "Total Duration: ${total_duration} seconds"
     
 else
     # Run a single language
