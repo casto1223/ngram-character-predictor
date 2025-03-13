@@ -16,8 +16,8 @@ class MyModel:
     def __init__(self):
         self.char_freq = defaultdict(lambda: defaultdict(int))
         self.context_length = 6  # Use 6 previous chars for context
-        # self.print_chars_repeatedly("")
-        # self.clean_text('src/data/hin_news_2022_10K-sentences.txt', 'src/data/hindi_text.txt')
+        self.print_chars_repeatedly("La capital de España es Madrid.")
+        # self.clean_text('src/data/fra_news_2024_10K-sentences.txt', 'src/data/french_text.txt')
 
     @classmethod
     def load_training_data(cls):
@@ -41,12 +41,12 @@ class MyModel:
             with open('src/data/german_text.txt', 'r', encoding='utf-8') as f:
                 for line in f:
                     # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?')
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'äöüßÄÖÜ')
                     data.append(cleaned)
         except FileNotFoundError:
             print("German text file not found. Continuing with English data only.")
 
-        # Load German data
+        # Load Russian data
         try:
             with open('src/data/russian_text.txt', 'r', encoding='utf-8') as f:
                 for line in f:
@@ -66,7 +66,7 @@ class MyModel:
         except FileNotFoundError:
             print("Chinese text file not found. Continuing with English data only.")
 
-        # Load German data
+        # Load Hindi data
         try:
             with open('src/data/hindi_text.txt', 'r', encoding='utf-8') as f:
                 for line in f:
@@ -75,7 +75,38 @@ class MyModel:
                     data.append(cleaned)
         except FileNotFoundError:
             print("Hindi text file not found. Continuing with English data only.")
-        
+
+        # Load French data
+        try:
+            with open('src/data/french_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'éèêëàâäôöùûüÿçœæ')
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("French text file not found. Continuing without French data.")
+
+        # Load Italian data
+        try:
+            with open('src/data/italian_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'àèéìíîòóùú')
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Italian text file not found. Continuing without Italian data.")
+
+        # Load Spanish data
+        try:
+            with open('src/data/spanish_text.txt', 'r', encoding='utf-8') as f:
+                for line in f:
+                    # Clean text to keep only letters and basic punctuation
+                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'áéíóúüñ¿¡')
+                    data.append(cleaned)
+        except FileNotFoundError:
+            print("Spanish text file not found. Continuing without Spanish data.")
+
+
         return data
 
     @classmethod
