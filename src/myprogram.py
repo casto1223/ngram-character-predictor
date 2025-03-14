@@ -26,41 +26,60 @@ class LanguageModel:
                 self.char_freq[context][next_char] += 1
                 
     def get_top_chars(self, context, n=3):
-        """Get top n characters given context"""
-        freq_dict = self.char_freq[context[-self.context_length:]]
+        """Get top n characters given context - optimized"""
+        # Direct lookup with the right context length
+        if len(context) > self.context_length:
+            context_key = context[-self.context_length:]
+        else:
+            context_key = context
+            
+        freq_dict = self.char_freq[context_key]
         
-        # If no data for this context, back off to shorter context
-        backup_length = len(context)
-        while not freq_dict and backup_length > 0:
-            backup_length -= 1
-            shorter_context = context[-backup_length:] if backup_length > 0 else ""
-            freq_dict = self.char_freq[shorter_context]
-        
-        # If still no data, use language-specific defaults
-        if not freq_dict:
-            return self.get_defaults()
-        
-        # Sort by frequency and return top n unique characters
-        sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+        # Initialize result and seen set
         result = ''
         seen = set()
         
-        for char, _ in sorted_chars:
-            if char not in seen:
-                result += char
-                seen.add(char)
-                if len(result) == n:
-                    break
+        # Early return path for common case
+        if freq_dict:
+            # Sort by frequency
+            sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+            
+            # Fast path for most common case (more than n unique chars)
+            char_count = 0
+            for char, _ in sorted_chars:
+                if char not in seen:
+                    result += char
+                    seen.add(char)
+                    char_count += 1
+                    if char_count == n:
+                        return result
         
-        # If we don't have enough unique characters, pad with defaults
+        # If we don't have enough characters or no data for context,
+        # use the backoff strategy, but optimize it
+        if not freq_dict or len(result) < n:
+            # Try shorter context windows
+            backup_length = len(context) - 1 if len(context) > 1 else 0
+            while backup_length > 0:
+                shorter_context = context[-backup_length:]
+                freq_dict = self.char_freq[shorter_context]
+                if freq_dict:
+                    # Add characters from this shorter context
+                    sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+                    for char, _ in sorted_chars:
+                        if char not in seen:
+                            result += char
+                            seen.add(char)
+                            if len(result) == n:
+                                return result
+                backup_length -= 1
+        
+        # If we still don't have enough, use defaults
         if len(result) < n:
             defaults = self.get_defaults()
-            i = 0
-            while len(result) < n:
-                if i < len(defaults) and defaults[i] not in seen:
-                    result += defaults[i]
-                    seen.add(defaults[i])
-                i = (i + 1) % len(defaults)
+            for char in defaults:
+                if char not in seen and len(result) < n:
+                    result += char
+                    seen.add(char)
         
         return result
     
@@ -265,28 +284,66 @@ class MyModel:
             raise
 
     def detect_alphabet(self, text):
-        """Detect the alphabet of a text string"""
-        text = text.lower()
+        """Detect the alphabet of a text string - optimized version"""
+        # Quick check for empty text
+        if not text:
+            return 'latin'
+            
+        # Check first a few characters instead of the entire text
+        sample = text[-min(10, len(text)):]
         
-        # Check for language-specific Unicode ranges
-        if any(self.language_ranges['chinese'][0] <= ord(c) <= self.language_ranges['chinese'][1] for c in text):
-            return 'chinese'
-        if any(self.language_ranges['hindi'][0] <= ord(c) <= self.language_ranges['hindi'][1] for c in text):
-            return 'devanagari'
-        if any(self.language_ranges['russian'][0] <= ord(c) <= self.language_ranges['russian'][1] for c in text):
-            return 'cyrillic'
-        if any(self.language_ranges['hebrew'][0] <= ord(c) <= self.language_ranges['hebrew'][1] for c in text):
-            return 'hebrew'
-        if any(self.language_ranges['arabic'][0] <= ord(c) <= self.language_ranges['arabic'][1] for c in text):
-            return 'arabic'
+        # Use a more efficient approach with any() and fewer function calls
+        for char in sample:
+            code_point = ord(char)
+            if 0x4e00 <= code_point <= 0x9fff:
+                return 'chinese'
+            if 0x0900 <= code_point <= 0x097F:
+                return 'devanagari'
+            if 0x0400 <= code_point <= 0x04FF:
+                return 'cyrillic'
+            if 0x0590 <= code_point <= 0x05FF:
+                return 'hebrew'
+            if 0x0600 <= code_point <= 0x06FF:
+                return 'arabic'
         
-        # Check for Latin with special characters
-        for language, char_set in self.special_chars.items():
-            if any(c in char_set for c in text):
+        # Check for Latin with special characters - only if needed
+        for char in sample:
+            if char in 'äöüßÄÖÜéèêëàâôöùûüÿçœæàèéìíîòóùúáéíóúüñ¿¡':
                 return 'latin'
         
         # Default to Latin
         return 'latin'
+
+    def get_top_chars(self, context, n=3):
+        """Get predictions using the appropriate alphabet model - optimized"""
+        # Use cache to avoid redetecting alphabets
+        if not hasattr(self, '_alphabet_cache'):
+            self._alphabet_cache = {}
+        
+        # Check if we've already detected this context
+        if context in self._alphabet_cache:
+            alphabet = self._alphabet_cache[context]
+        else:
+            # Detect alphabet and cache it
+            alphabet = self.detect_alphabet(context)
+            self._alphabet_cache[context] = alphabet
+            
+            # Limit cache size to prevent memory issues
+            if len(self._alphabet_cache) > 10000:
+                # Clear half of the cache when it gets too large
+                self._alphabet_cache = {k: self._alphabet_cache[k] 
+                                       for k in list(self._alphabet_cache.keys())[-5000:]}
+        
+        # Use the appropriate model with early return
+        if alphabet in self.models:
+            return self.models[alphabet].get_top_chars(context, n)
+            
+        # Fallback to Latin if no model found
+        if 'latin' in self.models:
+            return self.models['latin'].get_top_chars(context, n)
+            
+        # Ultimate fallback
+        return 'eai'
 
     def run_train(self, data, work_dir):
         """Train separate models for each alphabet"""
@@ -322,45 +379,24 @@ class MyModel:
             else:
                 print(f"No data found for {alphabet}, skipping model creation")
 
-    def get_top_chars(self, context, n=3):
-        """Get predictions using the appropriate alphabet model"""
-        # Detect alphabet
-        alphabet = self.detect_alphabet(context)
-        
-        # Use the appropriate model
-        if alphabet in self.models:
-            return self.models[alphabet].get_top_chars(context, n)
-            
-        # Fallback to Latin if no model found
-        if 'latin' in self.models:
-            return self.models['latin'].get_top_chars(context, n)
-            
-        # Ultimate fallback if no models exist
-        return 'eai'
-
     def run_pred(self, data):
+        """Optimized prediction function"""
         preds = []
+        
+        # Pre-initialize some variables
+        context_length = self.context_length
+        
         for inp in data:
-            # Convert to lowercase
-            inp = inp.lower()
-            
-            # Detect alphabet
-            alphabet = self.detect_alphabet(inp)
-            
-            # Get context based on length
-            context = inp[-self.context_length:] if len(inp) >= self.context_length else inp
+            # Get context based on length - avoid function calls
+            if len(inp) >= context_length:
+                context = inp[-context_length:]
+            else:
+                context = inp
             
             # Get top 3 characters using alphabet-specific model
-            if alphabet in self.models:
-                top_3 = self.models[alphabet].get_top_chars(context)
-            else:
-                # Fall back to Latin model if available
-                if 'latin' in self.models:
-                    top_3 = self.models['latin'].get_top_chars(context)
-                else:
-                    top_3 = 'eai'  # Ultimate fallback
-                    
+            top_3 = self.get_top_chars(context)                
             preds.append(top_3)
+            
         return preds
 
     def save(self, work_dir):
