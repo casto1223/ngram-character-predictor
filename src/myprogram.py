@@ -5,131 +5,240 @@ import random
 import csv
 from collections import defaultdict
 import pickle
+import re
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+
+class LanguageModel:
+    """Individual language model"""
+    
+    def __init__(self, language):
+        self.language = language
+        self.char_freq = defaultdict(lambda: defaultdict(int))
+        self.context_length = 6  # Use 6 previous chars for context
+        
+    def train(self, texts):
+        """Train model on language-specific texts"""
+        for text in texts:
+            for i in range(1, len(text)):
+                context = text[max(0, i-self.context_length):i]
+                next_char = text[i]
+                self.char_freq[context][next_char] += 1
+                
+    def get_top_chars(self, context, n=3):
+        """Get top n characters given context"""
+        freq_dict = self.char_freq[context[-self.context_length:]]
+        
+        # If no data for this context, back off to shorter context
+        backup_length = len(context)
+        while not freq_dict and backup_length > 0:
+            backup_length -= 1
+            shorter_context = context[-backup_length:] if backup_length > 0 else ""
+            freq_dict = self.char_freq[shorter_context]
+        
+        # If still no data, use language-specific defaults
+        if not freq_dict:
+            return self.get_defaults()
+        
+        # Sort by frequency and return top n unique characters
+        sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+        result = ''
+        seen = set()
+        
+        for char, _ in sorted_chars:
+            if char not in seen:
+                result += char
+                seen.add(char)
+                if len(result) == n:
+                    break
+        
+        # If we don't have enough unique characters, pad with defaults
+        if len(result) < n:
+            defaults = self.get_defaults()
+            i = 0
+            while len(result) < n:
+                if i < len(defaults) and defaults[i] not in seen:
+                    result += defaults[i]
+                    seen.add(defaults[i])
+                i = (i + 1) % len(defaults)
+        
+        return result
+    
+    def get_defaults(self):
+        """Return default characters for this language"""
+        defaults = {
+            'chinese': '的一是',
+            'hindi': 'कीहम',
+            'russian': 'вон',
+            'german': 'ein',
+            'french': 'est',
+            'italian': 'che',
+            'spanish': 'los',
+            'hebrew': 'אבג',
+            'arabic': 'بتث',
+            'english': 'eai'
+        }
+        return defaults.get(self.language, 'eai')
 
 
 class MyModel:
     """
-    This is a starter model to get you started. Feel free to modify this file.
+    Multi-language model that manages alphabet-based models
     """
 
     def __init__(self):
-        self.char_freq = defaultdict(lambda: defaultdict(int))
-        self.context_length = 6  # Use 6 previous chars for context
-        self.hebrew_range = (0x0590, 0x05FF)
-        self.arabic_range = (0x0600, 0x06FF)
-        # self.print_chars_repeatedly("ישראל, רשמית מדינת ישראל, היא מדינה במערב אסיה.")
-        # self.clean_text('src/data/ara_news_2022_10K-sentences.txt', 'src/data/arabic_text.txt')
+        # Define language detection ranges
+        self.language_ranges = {
+            'chinese': (0x4e00, 0x9fff),
+            'hindi': (0x0900, 0x097F),
+            'russian': (0x0400, 0x04FF),
+            'hebrew': (0x0590, 0x05FF),
+            'arabic': (0x0600, 0x06FF)
+        }
+        
+        # Special character sets for European languages
+        self.special_chars = {
+            'german': set('äöüßÄÖÜ'),
+            'french': set('éèêëàâäôöùûüÿçœæ'),
+            'italian': set('àèéìíîòóùú'),
+            'spanish': set('áéíóúüñ¿¡')
+        }
+        
+        # Map languages to alphabet groups
+        self.language_to_alphabet = {
+            'english': 'latin',
+            'german': 'latin',
+            'french': 'latin', 
+            'italian': 'latin',
+            'spanish': 'latin',
+            'russian': 'cyrillic',
+            'chinese': 'chinese',
+            'hindi': 'devanagari',
+            'hebrew': 'hebrew',
+            'arabic': 'arabic'
+        }
+        
+        # Initialize alphabet models
+        self.models = {}
+        self.context_length = 6
+
+    @classmethod
+    def load_language_data(cls, language):
+        """Load training data for a specific language"""
+        data = []
+        
+        # Define file paths and character sets
+        if language == 'english':
+            try:
+                with open('src/data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
+                    csv_reader = csv.reader(f)
+                    next(csv_reader)  # Skip header
+                    for row in csv_reader:
+                        if row:  # Make sure row isn't empty
+                            text = row[0]  # Assuming transcript is first column
+                            # Clean text to keep only letters and basic punctuation
+                            cleaned = ''.join(c.lower() for c in text if c.isalpha() or c in ' .,!?')
+                            data.append(cleaned)
+            except FileNotFoundError:
+                print("English TED talks file not found.")
+        elif language == 'german':
+            try:
+                with open('src/data/german_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'äöüßÄÖÜ')
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("German text file not found.")
+        elif language == 'russian':
+            try:
+                with open('src/data/russian_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF'))
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("Russian text file not found.")
+        elif language == 'chinese':
+            try:
+                with open('src/data/chinese_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        cleaned_line = line.strip()
+                        if cleaned_line:  # Skip empty lines
+                            data.append(cleaned_line)
+            except FileNotFoundError:
+                print("Chinese text file not found.")
+        elif language == 'hindi':
+            try:
+                with open('src/data/hindi_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0900' <= c <= '\u097F'))
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("Hindi text file not found.")
+        elif language == 'french':
+            try:
+                with open('src/data/french_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'éèêëàâäôöùûüÿçœæ')
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("French text file not found.")
+        elif language == 'italian':
+            try:
+                with open('src/data/italian_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'àèéìíîòóùú')
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("Italian text file not found.")
+        elif language == 'spanish':
+            try:
+                with open('src/data/spanish_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'áéíóúüñ¿¡')
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("Spanish text file not found.")
+        elif language == 'hebrew':
+            try:
+                with open('src/data/hebrew_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or (0x0590 <= ord(c) <= 0x05FF))
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("Hebrew text file not found.")
+        elif language == 'arabic':
+            try:
+                with open('src/data/arabic_text.txt', 'r', encoding='utf-8') as f:
+                    for line in f:
+                        # Clean text to keep only letters and basic punctuation
+                        cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or (0x0600 <= ord(c) <= 0x06FF))
+                        data.append(cleaned)
+            except FileNotFoundError:
+                print("Arabic text file not found.")
+
+        return data
 
     @classmethod
     def load_training_data(cls):
-        data = []
-        # Load English TED talks data
-        try:
-            with open('src/data/english_ted_talks.csv', 'r', encoding='utf-8') as f:
-                csv_reader = csv.reader(f)
-                next(csv_reader)  # Skip header
-                for row in csv_reader:
-                    if row:  # Make sure row isn't empty
-                        text = row[0]  # Assuming transcript is first column
-                        # Clean text to keep only letters and basic punctuation
-                        cleaned = ''.join(c.lower() for c in text if c.isalpha() or c in ' .,!?')
-                        data.append(cleaned)
-        except FileNotFoundError:
-            print("English TED talks file not found. Continuing with Chinese data only.")
-
-        # Load German data
-        try:
-            with open('src/data/german_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'äöüßÄÖÜ')
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("German text file not found. Continuing with English data only.")
-
-        # Load Russian data
-        try:
-            with open('src/data/russian_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF'))
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("Russian text file not found. Continuing with English data only.")
+        """For backwards compatibility"""
+        # This method loads all data together
+        all_data = []
+        languages = ['english', 'german', 'russian', 'chinese', 'hindi', 'french', 
+                    'italian', 'spanish', 'hebrew', 'arabic']
+        languages_with_latin = ['latin', 'russian', 'chinese', 'hindi', 
+                     'hebrew', 'arabic']
         
-        # Load Chinese data
-        try:
-            with open('src/data/chinese_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    cleaned_line = line.strip()
-                    if cleaned_line:  # Skip empty lines
-                        data.append(cleaned_line)
-        except FileNotFoundError:
-            print("Chinese text file not found. Continuing with English data only.")
-
-        # Load Hindi data
-        try:
-            with open('src/data/hindi_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or ('\u0400' <= c <= '\u04FF') or ('\u0900' <= c <= '\u097F'))
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("Hindi text file not found. Continuing with English data only.")
-
-        # Load French data
-        try:
-            with open('src/data/french_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'éèêëàâäôöùûüÿçœæ')
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("French text file not found. Continuing without French data.")
-
-        # Load Italian data
-        try:
-            with open('src/data/italian_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'àèéìíîòóùú')
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("Italian text file not found. Continuing without Italian data.")
-
-        # Load Spanish data
-        try:
-            with open('src/data/spanish_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or c in 'áéíóúüñ¿¡')
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("Spanish text file not found. Continuing without Spanish data.")
-
-        # Load Hebrew data
-        try:
-            with open('src/data/hebrew_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or (0x0590 <= ord(c) <= 0x05FF))
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("Hebrew text file not found. Continuing without Hebrew data.")
-
-        # Load Arabic data
-        try:
-            with open('src/data/arabic_text.txt', 'r', encoding='utf-8') as f:
-                for line in f:
-                    # Clean text to keep only letters and basic punctuation
-                    cleaned = ''.join(c.lower() for c in line if c.isalpha() or c in ' .,!?' or (0x0600 <= ord(c) <= 0x06FF))
-                    data.append(cleaned)
-        except FileNotFoundError:
-            print("Arabic text file not found. Continuing without Arabic data.")
-
-
-        return data
+        for language in languages:
+            all_data.extend(cls.load_language_data(language))
+            
+        return all_data
 
     @classmethod
     def load_test_data(cls, fname):
@@ -155,158 +264,215 @@ class MyModel:
             print(f"Error writing predictions: {e}")
             raise
 
+    def detect_alphabet(self, text):
+        """Detect the alphabet of a text string"""
+        text = text.lower()
+        
+        # Check for language-specific Unicode ranges
+        if any(self.language_ranges['chinese'][0] <= ord(c) <= self.language_ranges['chinese'][1] for c in text):
+            return 'chinese'
+        if any(self.language_ranges['hindi'][0] <= ord(c) <= self.language_ranges['hindi'][1] for c in text):
+            return 'devanagari'
+        if any(self.language_ranges['russian'][0] <= ord(c) <= self.language_ranges['russian'][1] for c in text):
+            return 'cyrillic'
+        if any(self.language_ranges['hebrew'][0] <= ord(c) <= self.language_ranges['hebrew'][1] for c in text):
+            return 'hebrew'
+        if any(self.language_ranges['arabic'][0] <= ord(c) <= self.language_ranges['arabic'][1] for c in text):
+            return 'arabic'
+        
+        # Check for Latin with special characters
+        for language, char_set in self.special_chars.items():
+            if any(c in char_set for c in text):
+                return 'latin'
+        
+        # Default to Latin
+        return 'latin'
+
     def run_train(self, data, work_dir):
-        print("Training on data...")
-        for text in data:
-            # Process text in appropriate chunks
-            for i in range(1, len(text)):  # Start at 1 since we're predicting the next character
-                # Get context (previous characters)
-                context = text[max(0, i-self.context_length):i]
-                # Character to predict
-                next_char = text[i]
-                # Update frequency dictionary
-                self.char_freq[context][next_char] += 1
+        """Train separate models for each alphabet"""
+        print("Training alphabet-based models...")
+        
+        # Define alphabet groups and their associated languages
+        alphabet_groups = {
+            'latin': ['english', 'german', 'french', 'italian', 'spanish'],
+            'cyrillic': ['russian'],
+            'chinese': ['chinese'],
+            'devanagari': ['hindi'],
+            'hebrew': ['hebrew'],
+            'arabic': ['arabic']
+        }
+        
+        # Create and train each alphabet model
+        for alphabet, languages in alphabet_groups.items():
+            print(f"Creating {alphabet} alphabet model...")
             
+            # Create a model for this alphabet
+            self.models[alphabet] = LanguageModel(alphabet)
+            
+            # Collect all text data for languages in this alphabet group
+            alphabet_data = []
+            for language in languages:
+                language_data = self.load_language_data(language)
+                if language_data:
+                    alphabet_data.extend(language_data)
+            
+            # Train the alphabet model if we have data
+            if alphabet_data:
+                self.models[alphabet].train(alphabet_data)
+            else:
+                print(f"No data found for {alphabet}, skipping model creation")
 
     def get_top_chars(self, context, n=3):
-        # Get frequency dict for this context
-        freq_dict = self.char_freq[context[-self.context_length:]]
+        """Get predictions using the appropriate alphabet model"""
+        # Detect alphabet
+        alphabet = self.detect_alphabet(context)
         
-        # Debug context analysis
-        has_chinese = any('\u4e00' <= char <= '\u9fff' for char in context)
-        has_hindi = any('\u0900' <= char <= '\u097F' for char in context)
-        has_russian = any('\u0400' <= char <= '\u04FF' for char in context)
-        has_hebrew = any(0x0590 <= ord(char) <= 0x05FF for char in context)
-        has_arabic = any(0x0600 <= ord(char) <= 0x06FF for char in context)
-        context_type = "Chinese" if has_chinese else "Hindi" if has_hindi else "Russian" if has_russian else "Hebrew" if has_hebrew else "Arabic" if has_arabic else "English"
-
-        # If no data for this context, back off to shorter context
-        original_context = context
-        backup_length = len(context)
-        while not freq_dict and backup_length > 0:
-            backup_length -= 1
-            shorter_context = context[-backup_length:] if backup_length > 0 else ""
-            freq_dict = self.char_freq[shorter_context]
-        
-        # If still no data, use appropriate defaults based on input language
-        if not freq_dict:
-            if has_chinese:
-                return '的一是'  # Common Chinese characters
-            elif has_hindi:
-                return 'कीहम'  # Common Hindi characters
-            elif has_russian:
-                return 'вон'  # Common Russian characters
-            elif has_hebrew:
-                return 'אבג'
-            elif has_arabic:
-                return 'بتث'
-            else:
-                return 'eai'  # Default for English
-        
-        # Sort by frequency and return top n unique characters
-        sorted_chars = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
-        result = ''
-        seen = set()
-        
-        for char, freq in sorted_chars:
-            if char not in seen:
-                result += char
-                seen.add(char)
-                if len(result) == n:
-                    break
-        
-        # If we don't have enough unique characters, pad with defaults
-        defaults = '的一是' if has_chinese else 'कीहम' if has_hindi else 'вон' if has_russian else 'אבג' if has_hebrew else 'بتث' if has_arabic else 'eai'
-        i = 0
-        while len(result) < n:
-            if defaults[i] not in seen:
-                result += defaults[i]
-                seen.add(defaults[i])
-            i = (i + 1) % len(defaults)
-        
-        return result
+        # Use the appropriate model
+        if alphabet in self.models:
+            return self.models[alphabet].get_top_chars(context, n)
+            
+        # Fallback to Latin if no model found
+        if 'latin' in self.models:
+            return self.models['latin'].get_top_chars(context, n)
+            
+        # Ultimate fallback if no models exist
+        return 'eai'
 
     def run_pred(self, data):
         preds = []
         for inp in data:
-            # Get last n characters as context
+            # Convert to lowercase
             inp = inp.lower()
+            
+            # Detect alphabet
+            alphabet = self.detect_alphabet(inp)
+            
+            # Get context based on length
             context = inp[-self.context_length:] if len(inp) >= self.context_length else inp
-            top_3 = self.get_top_chars(context)
+            
+            # Get top 3 characters using alphabet-specific model
+            if alphabet in self.models:
+                top_3 = self.models[alphabet].get_top_chars(context)
+            else:
+                # Fall back to Latin model if available
+                if 'latin' in self.models:
+                    top_3 = self.models['latin'].get_top_chars(context)
+                else:
+                    top_3 = 'eai'  # Ultimate fallback
+                    
             preds.append(top_3)
         return preds
 
     def save(self, work_dir):
-        checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
-        # Convert defaultdict to regular dict for serialization
-        char_freq_dict = dict(self.char_freq)
-        for context in char_freq_dict:
-            char_freq_dict[context] = dict(char_freq_dict[context])
+        """Save each alphabet model separately"""
+        os.makedirs(work_dir, exist_ok=True)
         
-        with open(checkpoint_path, 'wb') as f:
-            pickle.dump(char_freq_dict, f)
+        # Save alphabet models
+        for alphabet, model in self.models.items():
+            model_dir = os.path.join(work_dir, alphabet)
+            os.makedirs(model_dir, exist_ok=True)
+            
+            # Convert defaultdict to regular dict for serialization
+            char_freq_dict = dict(model.char_freq)
+            for context in char_freq_dict:
+                char_freq_dict[context] = dict(char_freq_dict[context])
+            
+            with open(os.path.join(model_dir, 'model.checkpoint'), 'wb') as f:
+                pickle.dump(char_freq_dict, f)
+                
+        # Save model metadata
+        with open(os.path.join(work_dir, 'alphabets.txt'), 'w', encoding='utf-8') as f:
+            for alphabet in self.models:
+                f.write(f"{alphabet}\n")
 
     @classmethod
     def load(cls, work_dir):
         model = cls()
-        checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
-        with open(checkpoint_path, 'rb') as f:
-            char_freq_dict = pickle.load(f)
-            # Convert back to defaultdict
-            model.char_freq = defaultdict(lambda: defaultdict(int))
-            for context, freq in char_freq_dict.items():
-                model.char_freq[context].update(freq)
+        
+        # Load available alphabet models
+        alphabets_file = os.path.join(work_dir, 'alphabets.txt')
+        if os.path.exists(alphabets_file):
+            with open(alphabets_file, 'r', encoding='utf-8') as f:
+                alphabets = [line.strip() for line in f if line.strip()]
+                
+            for alphabet in alphabets:
+                model_dir = os.path.join(work_dir, alphabet)
+                checkpoint_path = os.path.join(model_dir, 'model.checkpoint')
+                
+                if os.path.exists(checkpoint_path):
+                    # Create alphabet model
+                    alpha_model = LanguageModel(alphabet)
+                    
+                    # Load frequency data
+                    with open(checkpoint_path, 'rb') as f:
+                        char_freq_dict = pickle.load(f)
+                        # Convert to defaultdict
+                        alpha_model.char_freq = defaultdict(lambda: defaultdict(int))
+                        for context, freq in char_freq_dict.items():
+                            alpha_model.char_freq[context].update(freq)
+                    
+                    # Add to models dictionary
+                    model.models[alphabet] = alpha_model
+        else:
+            # Try loading language models for backward compatibility
+            languages_file = os.path.join(work_dir, 'languages.txt')
+            if os.path.exists(languages_file):
+                print("Found language models instead of alphabet models, converting...")
+                with open(languages_file, 'r', encoding='utf-8') as f:
+                    languages = [line.strip() for line in f if line.strip()]
+                
+                # Group languages by alphabet
+                alphabet_models = {}
+                for language in languages:
+                    model_dir = os.path.join(work_dir, language)
+                    checkpoint_path = os.path.join(model_dir, 'model.checkpoint')
+                    
+                    if os.path.exists(checkpoint_path):
+                        # Determine which alphabet this language belongs to
+                        alphabet = language
+                        if language in ('english', 'german', 'french', 'italian', 'spanish'):
+                            alphabet = 'latin'
+                        elif language == 'russian':
+                            alphabet = 'cyrillic'
+                        elif language == 'hindi':
+                            alphabet = 'devanagari'
+                        
+                        # Create the alphabet model if it doesn't exist
+                        if alphabet not in alphabet_models:
+                            alphabet_models[alphabet] = defaultdict(lambda: defaultdict(int))
+                        
+                        # Load and merge the language model data
+                        with open(checkpoint_path, 'rb') as f:
+                            char_freq_dict = pickle.load(f)
+                            for context, freq in char_freq_dict.items():
+                                for char, count in freq.items():
+                                    alphabet_models[alphabet][context][char] += count
+                
+                # Convert the merged data into models
+                for alphabet, freq_dict in alphabet_models.items():
+                    alpha_model = LanguageModel(alphabet)
+                    alpha_model.char_freq = defaultdict(lambda: defaultdict(int))
+                    for context, freq in freq_dict.items():
+                        alpha_model.char_freq[context].update(freq)
+                    model.models[alphabet] = alpha_model
+                    print(f"Converted and loaded {alphabet} model")
+            else:
+                # For backwards compatibility with the very old format
+                checkpoint_path = os.path.join(work_dir, 'model.checkpoint')
+                if os.path.exists(checkpoint_path):
+                    # Create a unified Latin model (legacy format)
+                    unified_model = LanguageModel('latin')
+                    
+                    with open(checkpoint_path, 'rb') as f:
+                        char_freq_dict = pickle.load(f)
+                        unified_model.char_freq = defaultdict(lambda: defaultdict(int))
+                        for context, freq in char_freq_dict.items():
+                            unified_model.char_freq[context].update(freq)
+                    
+                    model.models['latin'] = unified_model
+                    print("Loaded legacy unified model as Latin alphabet model")
+                
         return model
-
-    @classmethod
-    def print_chars_repeatedly(self, s):
-        # Print progressive expansion of the string
-        for j in range(1, len(s) + 1):
-            print(s[:j])
-        
-        # Print each character on a new line
-        for char in s:
-            print(char)
-
-    @classmethod
-    def print_chars_repeatedly_rtol(self, s):
-        # Print progressive expansion of the string
-        for j in range(1, len(s) + 1):
-            print(s[j-1::-1])
-        
-        # Print each character on a new line
-        for char in s:
-            print(char)
-
-    @classmethod
-    def clean_text(cls, input_file, output_file):
-        """
-        Clean German text data by removing numbers and leading spaces at the start of each line
-        
-        Args:
-            input_file (str): Path to the input file
-            output_file (str): Path to the output file where cleaned text will be saved
-        """
-        try:
-            with open(input_file, 'r', encoding='utf-8') as f_in, open(output_file, 'w', encoding='utf-8') as f_out:
-                for line in f_in:
-                    # Use regex-like approach to remove number prefix and spaces
-                    cleaned_line = line.strip()
-                    # Find position after the initial number and spaces
-                    pos = 0
-                    # Skip initial numbers
-                    while pos < len(cleaned_line) and cleaned_line[pos].isdigit():
-                        pos += 1
-                    # Skip spaces after numbers
-                    while pos < len(cleaned_line) and cleaned_line[pos].isspace():
-                        pos += 1
-                    # Write the cleaned text
-                    if pos < len(cleaned_line):
-                        f_out.write(cleaned_line[pos:] + '\n')
-            
-            print(f"Cleaned text saved to {output_file}")
-        except Exception as e:
-            print(f"Error cleaning text: {e}")
 
 
 if __name__ == '__main__':
@@ -323,12 +489,10 @@ if __name__ == '__main__':
         if not os.path.isdir(args.work_dir):
             print('Making working directory {}'.format(args.work_dir))
             os.makedirs(args.work_dir)
-        print('Instatiating model')
+        print('Instantiating model')
         model = MyModel()
-        print('Loading training data')
-        train_data = MyModel.load_training_data()
         print('Training')
-        model.run_train(train_data, args.work_dir)
+        model.run_train(None, args.work_dir)
         print('Saving model')
         model.save(args.work_dir)
     elif args.mode == 'test':

@@ -2,8 +2,8 @@
 set -e
 
 # Define all language codes
-languages=("chinese" "german" "hindi" "russian" "english" "french" "italian" "hebrew" "arabic" "japanese" "korean")
-language_names=("Chinese" "German" "Hindi" "Russian" "English" "French" "Italian" "Hebrew" "Arabic" "Japanese" "Korean")
+languages=("chinese" "german" "hindi" "russian" "english" "french" "italian" "hebrew" "arabic" "japanese" "korean" "spanish")
+language_names=("Chinese" "German" "Hindi" "Russian" "English" "French" "Italian" "Hebrew" "Arabic" "Japanese" "Korean" "Spanish")
 
 # Function to extract success rate from grade.py output
 extract_success_rate() {
@@ -79,6 +79,9 @@ else
     case $1 in 
         "chi")
         data="_chinese"
+        ;;
+        "spa")
+        data="_spanish"
         ;;
         "ger")
         data="_german"
