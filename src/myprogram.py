@@ -39,17 +39,6 @@ class LanguageModel:
                 
     def get_top_chars(self, context, n=3):
         """Get top n characters given context - with fixed space handling"""
-        # Check for space at end of context
-        ends_with_space = bool(context and context[-1] == ' ')
-        
-        # Set flag for get_defaults to use
-        self._after_space = ends_with_space
-        
-        # If context ends with space, use special handling
-        if ends_with_space:
-            # Direct return of space-specific defaults
-            defaults = self.get_defaults()
-            return defaults[:n]
         
         # Normal processing for non-space contexts
         # Direct lookup with the right context length (language-specific)
@@ -113,7 +102,9 @@ class LanguageModel:
         defaults = {
             'chinese': '的一是',
             'hindi': 'कीहम',
+            'devanagari': 'कीहम',
             'russian': 'вон',
+            'cyrillic': 'вон',
             'german': 'ein',
             'french': 'est',
             'italian': 'che',
@@ -313,7 +304,7 @@ class MyModel:
         try:
             with open(fname, 'r', encoding='utf-8') as f:
                 for line in f:
-                    inp = line.strip()
+                    inp = line[:-1]
                     if inp:  # Skip empty lines
                         data.append(inp)
         except Exception as e:
@@ -356,11 +347,11 @@ class MyModel:
         
         # Check for Latin with special characters - only if needed
         for char in sample:
-            if char in 'äöüßÄÖÜéèêëàâôöùûüÿçœæàèéìíîòóùúáéíóúüñ¿¡':
+            if char in 'eatoinshdrluqwypfgjkxzvcbmEATOINSHDRLUQWYPFGJKXZVCBMäöüßÄÖÜéèêëàâôöùûüÿçœæàèéìíîòóùúáéíóúüñ¿¡':
                 return 'latin'
         
         # Default to Latin
-        return 'latin'
+        return 'none'
 
     def get_top_chars(self, context, n=3):
         """Get predictions using the appropriate alphabet model"""
@@ -396,11 +387,11 @@ class MyModel:
             return model.get_top_chars(context_to_use, n)
         
         # Fallback logic remains the same
-        if 'latin' in self.models:
-            return self.models['latin'].get_top_chars(context, n)
+        #if 'latin' in self.models:
+            #return self.models['latin'].get_top_chars(context, n)
             
         # Ultimate fallback
-        return 'eai'
+        return ' \"?'
 
     def run_train(self, data, work_dir):
         """Train separate models for each alphabet"""
