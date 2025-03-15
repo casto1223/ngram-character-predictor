@@ -20,7 +20,7 @@ class LanguageModel:
         context_lengths = {
             'latin': 5,       # More context for Latin alphabets (English, German, etc.)
             'cyrillic': 4,    # Medium context for Russian
-            'chinese': 3,     # Less context for Chinese characters
+            'chinese': 1,     # Less context for Chinese characters
             'devanagari': 4,  # Medium context for Hindi
             'hebrew': 3,      # Medium-short context for Hebrew
             'arabic': 3       # Medium-short context for Arabic
