@@ -26,7 +26,20 @@ class LanguageModel:
                 self.char_freq[context][next_char] += 1
                 
     def get_top_chars(self, context, n=3):
-        """Get top n characters given context - optimized"""
+        """Get top n characters given context - with fixed space handling"""
+        # Check for space at end of context
+        ends_with_space = bool(context and context[-1] == ' ')
+        
+        # Set flag for get_defaults to use
+        self._after_space = ends_with_space
+        
+        # If context ends with space, use special handling
+        if ends_with_space:
+            # Direct return of space-specific defaults
+            defaults = self.get_defaults()  # Will use space_defaults via flag
+            return defaults[:n]
+        
+        # Normal processing for non-space contexts
         # Direct lookup with the right context length
         if len(context) > self.context_length:
             context_key = context[-self.context_length:]
@@ -95,9 +108,32 @@ class LanguageModel:
             'spanish': 'los',
             'hebrew': 'אבג',
             'arabic': 'بتث',
-            'english': 'eai'
+            'english': 'eai',
+            'latin': 'eai'  # Add explicit latin defaults
         }
-        return defaults.get(self.language, 'eai')
+        
+        # For spaces, we want consonants/common first characters
+        space_defaults = {
+            'chinese': '我你他',
+            'hindi': 'मैंवह',
+            'russian': 'ятв',
+            'german': 'iwd',
+            'french': 'jlm',
+            'italian': 'ild',
+            'spanish': 'eld',
+            'hebrew': 'אני',
+            'arabic': 'انا',
+            'english': 'itw',
+            'latin': 'itw',  # Common words after space: I, the, we, etc.
+            'cyrillic': 'ятв',
+            'devanagari': 'मैंवह'
+        }
+        
+        # If context ends with space, return space defaults
+        if hasattr(self, '_after_space') and self._after_space:
+            return space_defaults.get(self.language, 'itw')
+        else:
+            return defaults.get(self.language, 'eai')
 
 
 class MyModel:
@@ -315,7 +351,7 @@ class MyModel:
         return 'latin'
 
     def get_top_chars(self, context, n=3):
-        """Get predictions using the appropriate alphabet model - optimized"""
+        """Get predictions using the appropriate alphabet model"""
         # Use cache to avoid redetecting alphabets
         if not hasattr(self, '_alphabet_cache'):
             self._alphabet_cache = {}
@@ -328,13 +364,29 @@ class MyModel:
             alphabet = self.detect_alphabet(context)
             self._alphabet_cache[context] = alphabet
             
-            # Limit cache size to prevent memory issues
+            # Limit cache size
             if len(self._alphabet_cache) > 10000:
-                # Clear half of the cache when it gets too large
                 self._alphabet_cache = {k: self._alphabet_cache[k] 
                                        for k in list(self._alphabet_cache.keys())[-5000:]}
         
-        # Use the appropriate model with early return
+        # Handle space-ending contexts directly
+        if context and context[-1] == ' ':
+            if alphabet in self.models:
+                # Set space flag on the model
+                self.models[alphabet]._after_space = True
+                result = self.models[alphabet].get_top_chars(context, n)
+                self.models[alphabet]._after_space = False  # Reset flag
+                return result
+            elif 'latin' in self.models:
+                # Fallback for unknown alphabets
+                self.models['latin']._after_space = True
+                result = self.models['latin'].get_top_chars(context, n)
+                self.models['latin']._after_space = False  # Reset flag
+                return result
+            else:
+                return 'itw'  # Common first letters after space
+        
+        # Normal processing for non-space contexts
         if alphabet in self.models:
             return self.models[alphabet].get_top_chars(context, n)
             
