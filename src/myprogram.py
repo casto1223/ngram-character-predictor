@@ -15,10 +15,22 @@ class LanguageModel:
     def __init__(self, language):
         self.language = language
         self.char_freq = defaultdict(lambda: defaultdict(int))
-        self.context_length = 6  # Use 6 previous chars for context
+        
+        # Define different context lengths for each alphabet
+        context_lengths = {
+            'latin': 5,       # More context for Latin alphabets (English, German, etc.)
+            'cyrillic': 4,    # Medium context for Russian
+            'chinese': 3,     # Less context for Chinese characters
+            'devanagari': 4,  # Medium context for Hindi
+            'hebrew': 3,      # Medium-short context for Hebrew
+            'arabic': 3       # Medium-short context for Arabic
+        }
+        
+        # Set the context length based on the language/alphabet
+        self.context_length = context_lengths.get(language, 6)  # Default to 6 if not specified
         
     def train(self, texts):
-        """Train model on language-specific texts"""
+        """Train model on language-specific texts using appropriate context length"""
         for text in texts:
             for i in range(1, len(text)):
                 context = text[max(0, i-self.context_length):i]
@@ -36,11 +48,11 @@ class LanguageModel:
         # If context ends with space, use special handling
         if ends_with_space:
             # Direct return of space-specific defaults
-            defaults = self.get_defaults()  # Will use space_defaults via flag
+            defaults = self.get_defaults()
             return defaults[:n]
         
         # Normal processing for non-space contexts
-        # Direct lookup with the right context length
+        # Direct lookup with the right context length (language-specific)
         if len(context) > self.context_length:
             context_key = context[-self.context_length:]
         else:
@@ -369,28 +381,21 @@ class MyModel:
                 self._alphabet_cache = {k: self._alphabet_cache[k] 
                                        for k in list(self._alphabet_cache.keys())[-5000:]}
         
-        # Handle space-ending contexts directly
-        if context and context[-1] == ' ':
-            if alphabet in self.models:
-                # Set space flag on the model
-                self.models[alphabet]._after_space = True
-                result = self.models[alphabet].get_top_chars(context, n)
-                self.models[alphabet]._after_space = False  # Reset flag
-                return result
-            elif 'latin' in self.models:
-                # Fallback for unknown alphabets
-                self.models['latin']._after_space = True
-                result = self.models['latin'].get_top_chars(context, n)
-                self.models['latin']._after_space = False  # Reset flag
-                return result
-            else:
-                return 'itw'  # Common first letters after space
-        
-        # Normal processing for non-space contexts
+        # Get the alphabet-specific model
         if alphabet in self.models:
-            return self.models[alphabet].get_top_chars(context, n)
+            model = self.models[alphabet]
+            # Use the model's context length instead of self.context_length
+            context_length = model.context_length
             
-        # Fallback to Latin if no model found
+            # Trim context to the appropriate length if needed
+            if len(context) > context_length:
+                context_to_use = context[-context_length:]
+            else:
+                context_to_use = context
+                
+            return model.get_top_chars(context_to_use, n)
+        
+        # Fallback logic remains the same
         if 'latin' in self.models:
             return self.models['latin'].get_top_chars(context, n)
             
